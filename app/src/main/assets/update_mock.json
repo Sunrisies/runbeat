@@ -1,0 +1,7 @@
+{
+  "version_code": 9999,
+  "version_name": "1.1.0",
+  "update_url": "https://cdn.sunrise1024.top/runbeat/runbeat-1.1.1.apk",
+  "release_notes": "Mock 演示版本（Debug 构建自动启用）。\n· 优化节拍器调度精度\n· 修复若干稳定性问题\n· 改进界面交互体验",
+  "force_update": false
+}

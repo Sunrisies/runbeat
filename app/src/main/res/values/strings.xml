@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">RunBeat 跑步节拍器</string>
+    <string name="notification_channel_name">节拍器运行中</string>
+    <string name="notification_channel_desc">保持节拍器在后台与锁屏状态下持续运行</string>
+    <string name="notification_title">RunBeat 跑步节拍器</string>
+    <string name="notification_running">节拍运行中 · %1$d BPM</string>
+    <string name="notification_paused">节拍已暂停</string>
+    <string name="notification_action_pause">暂停</string>
+    <string name="notification_action_resume">继续</string>
+    <string name="notification_action_stop">停止</string>
+
+    <string name="metronome_tab_title">节拍器</string>
+    <string name="bpm_unit">BPM</string>
+    <string name="bpm_label">每分钟节拍数</string>
+    <string name="preset_label">快捷预设</string>
+    <string name="preset_jog">入门慢跑</string>
+    <string name="preset_cadence">标准配速</string>
+    <string name="preset_sprint">间歇冲刺</string>
+    <string name="preset_custom">我的预设</string>
+    <string name="preset_saved">已保存我的预设：%1$d BPM</string>
+    <string name="sound_label">节拍音色</string>
+    <string name="sound_click">咔嗒</string>
+    <string name="sound_beep">哔声</string>
+    <string name="sound_wood">木鱼</string>
+    <string name="volume_label">音量</string>
+    <string name="action_start">开始</string>
+    <string name="action_pause">暂停</string>
+    <string name="action_resume">继续</string>
+    <string name="action_reset">重置</string>
+    <string name="beat_count_label">第 %1$d 拍</string>
+    <string name="notification_permission_rationale">为在锁屏或后台状态下持续显示节拍提示，需要通知权限。</string>
+
+    <!-- 版本更新 -->
+    <string name="update_dialog_title">发现新版本 v%1$s</string>
+    <string name="update_dialog_title_forced">请更新到 v%1$s 继续使用</string>
+    <string name="update_dialog_message">%1$s</string>
+    <string name="update_action_download">立即下载</string>
+    <string name="update_action_later">暂不下载</string>
+    <string name="update_action_never">不再提示</string>
+    <string name="update_action_install">立即安装</string>
+    <string name="update_action_settings">打开设置</string>
+    <string name="update_action_cancel">取消</string>
+    <string name="update_action_retry">重试</string>
+    <string name="update_downloading_title">正在下载更新</string>
+    <string name="update_downloading_desc">下载完成将自动引导安装</string>
+    <string name="update_downloading_percent">%1$d%%</string>
+    <string name="update_install_permission_title">需要安装权限</string>
+    <string name="update_install_permission_msg">为完成版本更新，请允许「安装未知来源应用」。</string>
+    <string name="update_download_failed">下载失败，请检查网络后重试</string>
+    <string name="update_download_start_failed">无法开始下载，请稍后重试</string>
+    <string name="update_apk_invalid">安装包无效，请重新下载</string>
+    <string name="update_install_failed">无法启动安装，请打开系统文件管理器手动安装</string>
+    <string name="update_latest">已是最新版本</string>
+    <string name="update_check_failed">检查更新失败，请检查网络连接</string>
+    <string name="update_check_button">检查更新</string>
+</resources>

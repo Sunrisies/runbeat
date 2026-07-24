@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- 下载安装包存放目录（app-specific external files dir/updates） -->
+    <external-files-path
+        name="updates"
+        path="updates/" />
+</paths>
