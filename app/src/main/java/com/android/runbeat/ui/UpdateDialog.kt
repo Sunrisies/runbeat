@@ -153,7 +153,7 @@ private fun InstallPermissionDialog(actions: UpdateDialogActions) {
     AlertDialog(
         onDismissRequest = actions.onClose,
         title = { Text("需要安装权限", fontWeight = FontWeight.Bold) },
-        text = { Text("为完成版本更新，请允许「安装未知来源应用」后重新下载。") },
+        text = { Text("为完成版本更新，请开启「安装未知来源应用」。开启后返回应用将自动继续安装。") },
         confirmButton = {
             Button(
                 onClick = actions.onOpenSettings,

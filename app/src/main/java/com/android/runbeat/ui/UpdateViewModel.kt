@@ -49,6 +49,9 @@ class UpdateViewModel(application: Application) : AndroidViewModel(application) 
 
     fun openInstallSettings() = manager.openInstallSettings()
 
+    /** 从系统设置页返回后调用，权限已授予则自动继续安装 */
+    fun resumePendingInstall() = manager.resumePendingInstall()
+
     fun retryDownload() = manager.downloadNow()
 
     private companion object {

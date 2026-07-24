@@ -46,12 +46,12 @@ class HttpUpdateSource(
 }
 
 /**
- * 内置 Mock 数据源：读取 assets/update_mock.json，并把版本号提升到 本地版本+1，
- * 保证 Debug 构建无需服务器即可演示完整更新流程。
+ * 内置 Mock 数据源：读取 assets/update_mock.json。
+ * 使用清单中的真实 version_code 与本地比对（不再强制本地+1），
+ * 这样「更新到清单对应版本后」Debug 构建也不会重复弹窗。
  */
 class MockUpdateSource(
     context: Context,
-    private val localVersionCode: Int,
 ) : UpdateSource {
 
     private val json: String = context.assets.open("update_mock.json")
@@ -59,5 +59,5 @@ class MockUpdateSource(
 
     @Throws(IOException::class)
     override fun fetchManifest(): UpdateManifest =
-        UpdateManifest.parse(json).copy(versionCode = localVersionCode + 1)
+        UpdateManifest.parse(json)
 }

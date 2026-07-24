@@ -10,13 +10,17 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import com.android.runbeat.ui.MetronomeScreen
 import com.android.runbeat.ui.UpdateDialog
 import com.android.runbeat.ui.UpdateDialogActions
@@ -41,6 +45,18 @@ private fun UpdateHost() {
     val updateState by updateViewModel.state.collectAsState()
     val notice by updateViewModel.notices.collectAsState(null)
     val context = LocalContext.current
+
+    // 从系统设置页（如「安装未知应用」）返回时自动继续安装
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                updateViewModel.resumePendingInstall()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     // 启动自动检测（延迟片刻，避免与首帧竞争）
     LaunchedEffect(Unit) { updateViewModel.checkOnLaunch() }

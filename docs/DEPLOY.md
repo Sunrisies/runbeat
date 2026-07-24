@@ -16,35 +16,42 @@
 - `app/build.gradle.kts` — 版本号与 `UPDATE_CHECK_URL` 配置
 - `app/src/main/assets/update_mock.json` — Debug Mock 清单
 
-## 2. 发布前必改项
+## 2. 发版流程（一键版本递增）
 
-### 2.1 版本号
-`app/build.gradle.kts`：
+版本号由项目根目录 `version.properties` 统一管理：
 
-```kotlin
-defaultConfig {
-    versionCode = 2        // 每次发版必须 +1，否则设备不会提示更新
-    versionName = "1.1.0"
-}
 ```
+VERSION_CODE=2
+VERSION_NAME=1.1.0
+```
+
+### 2.1 递增小版本（每次 +0.0.1）
+
+```bash
+./gradlew :app:bumpVersion
+```
+
+该任务自动完成三件事：
+1. **版本递增**：`versionCode +1`，`versionName` patch `+0.0.1`（如 1.1.0 → 1.1.1），写回 `version.properties`
+2. **生成部署清单**：生成 `deploy/manifest.json`（`version_code`/`version_name`/`update_url` 自动同步）
+3. **同步 Debug Mock**：更新 `assets/update_mock.json` 为同一版本，保证更新到该版本后 Debug 不再重复弹窗
+
+> 生成的 `manifest.json` 中 `release_notes` 为占位符，上传前请改为本次更新说明。
 
 ### 2.2 服务器地址
-`app/build.gradle.kts` 中把 `release` 的 `UPDATE_CHECK_URL` 改为真实地址：
 
-```kotlin
-buildTypes {
-    release {
-        buildConfigField("String", "UPDATE_CHECK_URL",
-            "\"https://your-domain.com/runbeat/manifest.json\"")
-    }
-}
-```
-
-> 必须使用 **https**，Android 9+ 默认禁止明文 http。
+`app/build.gradle.kts` 中 `UPDATE_CHECK_URL` 已配置为：
+`https://cdn.sunrise1024.top/runbeat/manifest.json`，无需改动（必须 https）。
 
 ### 2.3 签名
-Release 构建需配置签名，或用 Android Studio
-`Build > Generate Signed Bundle / APK` 生成。
+
+已生成并配置签名 keystore：
+- 文件：`runbeat-release.jks`（项目根目录，已加入 `app/build.gradle.kts` 的 `signingConfigs.release`）
+- alias：`runbeat`，密码：`CHANGE_ME`
+- **生产环境务必更换**：重新生成 keystore 并修改 `build.gradle.kts` 中的密码；
+  或使用 Android Studio `Build > Generate Signed Bundle / APK`。
+
+> 签名后 `assembleRelease` 直接产出 **已签名** 的 `app-release.apk`（可直接安装），不再是 unsigned 包。
 
 ## 3. 服务器部署
 
@@ -75,9 +82,41 @@ Release 构建需配置签名，或用 Android Studio
 ## 4. 构建命令
 
 ```bash
-./gradlew assembleRelease     # 发布包 → app/build/outputs/apk/release/
-./gradlew assembleDebug       # 调试包（Debug 内置 Mock，无需服务器可演示更新）
+./gradlew :app:bumpVersion          # ① 递增版本 + 生成 manifest.json
+./gradlew assembleRelease           # ② 发布包 → app/build/outputs/apk/release/
+./gradlew assembleDebug             # ③ 调试包（Debug 走内置 Mock）
 ```
+
+## 4.1 一键发版（推荐）
+
+Windows：双击或执行 `release.bat`；macOS/Linux/CI：执行 `./release.sh`。
+
+脚本自动完成「版本递增 → 生成 manifest → 构建 Release」，构建后只需手动上传。
+
+## 4.2 完整发版步骤（小版本更新）
+
+```bash
+# 方式一：一键脚本（推荐）
+release.bat          # 或 ./release.sh（Git Bash，自动修复 JAVA_HOME）
+# 自动完成：1.1.0 → 1.1.1、生成 deploy/manifest.json、构建已签名 app-release.apk
+
+# 方式二：手动两步
+./gradlew :app:bumpVersion                  # 1.1.0 → 1.1.1，生成 deploy/manifest.json
+./gradlew assembleRelease                   # 构建（读取新版本，已签名）
+
+# ① 将 app-release.apk 重命名为 runbeat-1.1.1.apk 上传到 cdn.sunrise1024.top/runbeat/
+# ② 编辑 deploy/manifest.json 填写 release_notes 后上传覆盖 manifest.json
+# ③ 用户端旧版启动即检测到新版本
+```
+
+> 注意：`version_code` / `version_name` 由 `bumpVersion` 在打包前自动递增，manifest 与 APK 版本保持一致，无需手动修改。
+
+## 4.3 安装权限说明
+
+更新流程采用「下载不拦截、安装时引导」策略：
+- 点「立即下载」**无需**预先授权，直接开始后台下载
+- 下载完成后若未开启「安装未知来源应用」，自动跳转系统设置页
+- 开启后**返回应用自动继续安装**（无需再手动点按钮），不会反复索要权限
 
 ## 5. 上线检查清单
 
@@ -103,11 +142,16 @@ Release 构建需配置签名，或用 Android Studio
 
 ## 7. Debug 演示模式
 
-Debug 构建默认 `UpdateConfig.USE_MOCK = true`，启动自动弹 Mock 更新弹窗
-（`assets/update_mock.json`，版本号自动设为 本地 versionCode + 1），
-无需服务器即可验证完整更新流程。
+Debug 构建默认 `UpdateConfig.USE_MOCK = true`，读取 `assets/update_mock.json`（**使用清单真实版本号与本地比对**）。`bumpVersion` 每次发版会自动把 Mock 同步到新版本，因此：
+
+- 旧版（versionCode 低于 Mock）→ 启动弹更新
+- 已更新到 Mock 对应版本 → 不再弹窗（不会无限重复提示）
 
 关闭方式：`update/UpdateConfig.kt` 中 `USE_MOCK` 改为 `false`。
+
+## 7.1 界面版本显示
+
+主界面顶部左侧显示当前版本（`v1.1.0`），右侧为「检查更新」入口，可直观确认是否已更新到最新。
 
 ## 8. 通知与权限说明
 

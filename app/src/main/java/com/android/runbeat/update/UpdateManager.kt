@@ -69,7 +69,7 @@ class UpdateManager private constructor(context: Context) {
         scope.launch {
             val localCode = localVersionCode()
             val source = if (UpdateConfig.USE_MOCK) {
-                MockUpdateSource(appContext, localCode)
+                MockUpdateSource(appContext)
             } else {
                 HttpUpdateSource(UpdateConfig.CHECK_URL)
             }
@@ -120,13 +120,9 @@ class UpdateManager private constructor(context: Context) {
 
     // ---------------------------------------------------------------- 下载
 
-    /** 「立即下载」：先确保安装权限，再发起后台下载 */
+    /** 「立即下载」：直接发起后台下载（安装权限在下载完成时再引导，避免反复拦截） */
     fun downloadNow() {
         val manifest = lastAvailableManifest ?: return
-        if (!InstallHelper.canRequestPackageInstalls(appContext)) {
-            _state.value = UpdateUiState.InstallPermissionNeeded
-            return
-        }
         scope.launch {
             val downloadId = runCatching { downloader.start(manifest) }.getOrNull()
             if (downloadId == null) {
@@ -216,6 +212,18 @@ class UpdateManager private constructor(context: Context) {
             _state.value = UpdateUiState.DownloadFailed(
                 appContext.getString(R.string.update_install_failed)
             )
+        }
+    }
+
+    /**
+     * 从「安装未知应用」设置页返回后自动继续安装。
+     * 若已有下载好的安装包且权限已授予，则立即拉起安装器，避免反复要求权限。
+     */
+    fun resumePendingInstall() {
+        val file = lastDownloadedFile ?: return
+        if (!file.exists()) return
+        if (InstallHelper.canRequestPackageInstalls(appContext)) {
+            installNow()
         }
     }
 

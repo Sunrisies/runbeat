@@ -54,6 +54,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.android.runbeat.BuildConfig
 import com.android.runbeat.metronome.core.MetronomeConstants
 import com.android.runbeat.metronome.core.MetronomeStatus
 import com.android.runbeat.metronome.core.SoundType
@@ -117,8 +118,14 @@ fun MetronomeScreen(
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
             ) {
+                Text(
+                    text = "v${BuildConfig.VERSION_NAME}",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = textSecondary(),
+                )
                 TextButton(onClick = onCheckUpdate) {
                     Text(
                         text = "检查更新",
