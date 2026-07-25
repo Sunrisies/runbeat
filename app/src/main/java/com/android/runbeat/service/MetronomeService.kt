@@ -85,6 +85,8 @@ class MetronomeService : Service() {
         super.onCreate()
         // context 已 attach，此时才能安全访问 prefs
         _settings.value = prefs.loadSettings()
+        // 提前创建并预热音频管线，消除按下「开始」后数秒才出声的问题
+        audioPlayer.ensureStarted(_settings.value.soundType, _settings.value.volumePercent)
         audioManager = getSystemService(AUDIO_SERVICE) as AudioManager
         createNotificationChannel()
     }

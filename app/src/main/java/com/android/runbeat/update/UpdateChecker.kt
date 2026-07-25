@@ -8,20 +8,24 @@ import java.io.IOException
  */
 class UpdateChecker(
     private val source: UpdateSource,
+    private val retryBackoffMs: Long = UpdateConfig.RETRY_BACKOFF_MS,
 ) {
 
     /**
-     * 拉取清单，失败时最多重试 [retries] 次。
+     * 拉取清单，失败时最多重试 [retries] 次，每次重试前短暂等待 [retryBackoffMs]。
      * @throws IOException 所有重试均失败时抛出
      */
     @Throws(IOException::class)
     fun fetchWithRetry(retries: Int = UpdateConfig.CHECK_RETRIES): UpdateManifest {
         var lastError: Exception? = null
-        repeat(retries + 1) {
+        repeat(retries + 1) { attempt ->
             try {
                 return source.fetchManifest()
             } catch (e: Exception) {
                 lastError = e
+                if (attempt < retries && retryBackoffMs > 0) {
+                    Thread.sleep(retryBackoffMs)
+                }
             }
         }
         throw IOException("版本检查失败: ${lastError?.message}", lastError)

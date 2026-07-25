@@ -77,6 +77,7 @@ import kotlin.math.roundToInt
 fun MetronomeScreen(
     modifier: Modifier = Modifier,
     onCheckUpdate: () -> Unit = {},
+    onTestUpdate: () -> Unit = {},
     viewModel: MetronomeViewModel = viewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -132,6 +133,15 @@ fun MetronomeScreen(
                         style = MaterialTheme.typography.labelMedium,
                         color = textSecondary(),
                     )
+                }
+                if (BuildConfig.DEBUG) {
+                    TextButton(onClick = onTestUpdate) {
+                        Text(
+                            text = "测试更新",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = com.android.runbeat.ui.theme.AccentBeat,
+                        )
+                    }
                 }
             }
 

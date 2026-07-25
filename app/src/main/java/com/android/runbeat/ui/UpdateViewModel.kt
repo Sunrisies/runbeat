@@ -39,7 +39,12 @@ class UpdateViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    /** 【仅 Debug】强制弹出测试更新弹窗 */
+    fun testUpdate() = manager.debugTestUpdate()
+
     fun downloadNow() = manager.downloadNow()
+
+    fun cancelDownload() = manager.cancelDownload()
 
     fun dismiss() = manager.dismiss()
 
@@ -51,8 +56,6 @@ class UpdateViewModel(application: Application) : AndroidViewModel(application) 
 
     /** 从系统设置页返回后调用，权限已授予则自动继续安装 */
     fun resumePendingInstall() = manager.resumePendingInstall()
-
-    fun retryDownload() = manager.downloadNow()
 
     private companion object {
         const val AUTO_CHECK_DELAY_MS = 1200L

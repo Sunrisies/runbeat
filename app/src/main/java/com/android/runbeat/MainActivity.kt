@@ -7,25 +7,31 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.compose.ui.platform.LocalLifecycleOwner
 import com.android.runbeat.ui.MetronomeScreen
 import com.android.runbeat.ui.UpdateDialog
 import com.android.runbeat.ui.UpdateDialogActions
 import com.android.runbeat.ui.UpdateViewModel
+import com.android.runbeat.ui.theme.AccentBeat
 import com.android.runbeat.ui.theme.RunBeatTheme
+import com.android.runbeat.update.UpdateUiState
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -68,9 +74,20 @@ private fun UpdateHost() {
 
     Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
         Box(modifier = Modifier.fillMaxSize()) {
+            // 版本检查进行中：顶部显示进度条，避免用户无反馈干等
+            if (updateState is UpdateUiState.Checking) {
+                LinearProgressIndicator(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .align(Alignment.TopCenter)
+                        .padding(top = 0.dp),
+                    color = AccentBeat,
+                )
+            }
             MetronomeScreen(
                 modifier = Modifier.padding(innerPadding),
                 onCheckUpdate = updateViewModel::checkNow,
+                onTestUpdate = updateViewModel::testUpdate,
             )
             UpdateDialog(
                 state = updateState,
@@ -80,8 +97,9 @@ private fun UpdateHost() {
                     onNever = updateViewModel::suppress,
                     onInstall = updateViewModel::installNow,
                     onOpenSettings = updateViewModel::openInstallSettings,
-                    onRetry = updateViewModel::retryDownload,
+                    onRetry = updateViewModel::downloadNow,
                     onClose = updateViewModel::dismiss,
+                    onCancelDownload = updateViewModel::cancelDownload,
                 ),
             )
         }

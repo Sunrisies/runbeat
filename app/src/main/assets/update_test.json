@@ -1,0 +1,7 @@
+{
+  "version_code": 9999,
+  "version_name": "9.9.9-test",
+  "update_url": "https://cdn.sunrise1024.top/runbeat/runbeat-1.1.7.apk",
+  "release_notes": "【测试专用】此弹窗由「测试更新」按钮强制触发。\n· version_code=9999 恒大于本地版本，可重复测试\n· 更新包下载地址请修改本文件 update_url\n· 注意：下载的 APK 版本号需 ≥ 当前安装版本，否则安装会失败",
+  "force_update": false
+}

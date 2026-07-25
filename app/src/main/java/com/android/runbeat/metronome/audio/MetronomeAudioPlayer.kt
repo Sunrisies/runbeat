@@ -23,43 +23,66 @@ class MetronomeAudioPlayer {
 
     private val lock = Any()
 
-    /** 开始/切换音色时初始化播放器 */
+    /**
+     * 开始/切换音色时初始化播放器。
+     * 首次创建时会预热音频管线（启动 + 写入静音），
+     * 消除安卓设备音频冷启动导致的「点击开始后数秒才出声」问题。
+     */
     fun ensureStarted(sound: SoundType, volumePercent: Int) {
         synchronized(lock) {
             this.volumePercent = volumePercent
-            if (track != null) return
-            val minBufferRaw = AudioTrack.getMinBufferSize(
-                TickSoundSynth.SAMPLE_RATE,
-                AudioFormat.CHANNEL_OUT_MONO,
-                AudioFormat.ENCODING_PCM_16BIT,
-            )
-            val minBuffer = if (minBufferRaw > 0) minBufferRaw else TickSoundSynth.SAMPLE_RATE
-            // 缓冲大小必须是帧大小的整数倍（mono/16-bit = 2 字节），否则 build() 抛异常
-            val frameSizeBytes = 2
-            var bufferBytes = maxOf(minBuffer, TickSoundSynth.SAMPLE_RATE / 2)
-            if (bufferBytes % frameSizeBytes != 0) {
-                bufferBytes += frameSizeBytes - bufferBytes % frameSizeBytes
+            if (track != null) {
+                setVolume(volumePercent)
+                return
             }
-            val t = AudioTrack.Builder()
-                .setAudioAttributes(
-                    AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_MEDIA)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                        .build()
-                )
-                .setAudioFormat(
-                    AudioFormat.Builder()
-                        .setSampleRate(TickSoundSynth.SAMPLE_RATE)
-                        .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                        .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
-                        .build()
-                )
-                .setTransferMode(AudioTrack.MODE_STREAM)
-                .setBufferSizeInBytes(bufferBytes)
-                .build()
+            val t = buildTrack()
             t.setVolume(volumePercent / 100f)
             track = t
+            prime(t)
         }
+    }
+
+    /** 预热：启动播放并填充一段静音，让音频 HAL/DSP 管线提前就绪 */
+    private fun prime(t: AudioTrack) {
+        try {
+            t.play()
+            val silence = ShortArray(TickSoundSynth.SAMPLE_RATE / 8) // 125ms
+            t.write(silence, 0, silence.size)
+        } catch (_: Exception) {
+            // 预热失败不影响后续：首次真正播放时再启动
+        }
+    }
+
+    private fun buildTrack(): AudioTrack {
+        val minBufferRaw = AudioTrack.getMinBufferSize(
+            TickSoundSynth.SAMPLE_RATE,
+            AudioFormat.CHANNEL_OUT_MONO,
+            AudioFormat.ENCODING_PCM_16BIT,
+        )
+        val minBuffer = if (minBufferRaw > 0) minBufferRaw else TickSoundSynth.SAMPLE_RATE
+        // 缓冲大小必须是帧大小的整数倍（mono/16-bit = 2 字节），否则 build() 抛异常
+        val frameSizeBytes = 2
+        var bufferBytes = maxOf(minBuffer, TickSoundSynth.SAMPLE_RATE / 2)
+        if (bufferBytes % frameSizeBytes != 0) {
+            bufferBytes += frameSizeBytes - bufferBytes % frameSizeBytes
+        }
+        return AudioTrack.Builder()
+            .setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                    .build()
+            )
+            .setAudioFormat(
+                AudioFormat.Builder()
+                    .setSampleRate(TickSoundSynth.SAMPLE_RATE)
+                    .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                    .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                    .build()
+            )
+            .setTransferMode(AudioTrack.MODE_STREAM)
+            .setBufferSizeInBytes(bufferBytes)
+            .build()
     }
 
     fun setVolume(percent: Int) {

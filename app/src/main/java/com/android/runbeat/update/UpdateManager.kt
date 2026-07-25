@@ -1,23 +1,24 @@
 package com.android.runbeat.update
 
-import android.app.DownloadManager
 import android.content.Context
 import android.os.Build
+import android.util.Log
+import androidx.core.content.ContextCompat
+import com.android.runbeat.BuildConfig
 import com.android.runbeat.R
+import com.android.runbeat.service.DownloadService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 import java.io.File
-import java.io.IOException
 
 /** 更新流程 UI 状态 */
 sealed interface UpdateUiState {
@@ -26,7 +27,11 @@ sealed interface UpdateUiState {
     data class Available(val manifest: UpdateManifest, val forced: Boolean) : UpdateUiState
     data object NoUpdate : UpdateUiState
     data class CheckFailed(val message: String) : UpdateUiState
-    data class Downloading(val progress: Float) : UpdateUiState
+    data class Downloading(
+        val progress: Float,
+        val bytesDownloaded: Long = 0L,
+        val totalBytes: Long = 0L,
+    ) : UpdateUiState
     data class DownloadFailed(val message: String) : UpdateUiState
     data object InstallPermissionNeeded : UpdateUiState
     data object Installing : UpdateUiState
@@ -43,7 +48,6 @@ class UpdateManager private constructor(context: Context) {
 
     private val appContext = context.applicationContext
     private val prefs = UpdatePrefs(appContext)
-    private val downloader = AppDownloader(appContext)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private val _state = MutableStateFlow<UpdateUiState>(UpdateUiState.Idle)
@@ -74,8 +78,10 @@ class UpdateManager private constructor(context: Context) {
                 HttpUpdateSource(UpdateConfig.CHECK_URL)
             }
             val manifest = try {
-                UpdateChecker(source).fetchWithRetry()
-            } catch (e: IOException) {
+                withTimeout(UpdateConfig.CHECK_TOTAL_TIMEOUT_MS) {
+                    UpdateChecker(source).fetchWithRetry()
+                }
+            } catch (e: Exception) {
                 _state.value = UpdateUiState.Idle
                 if (manual) _notices.emit(UpdateNotice(appContext.getString(R.string.update_check_failed)))
                 return@launch
@@ -112,6 +118,25 @@ class UpdateManager private constructor(context: Context) {
         _state.value = UpdateUiState.Idle
     }
 
+    /**
+     * 【仅 Debug】强制弹出测试更新弹窗（读取 assets/update_test.json）。
+     * 用于本地版本总是高于服务器时，随时测试下载/安装流程。
+     */
+    fun debugTestUpdate() {
+        if (!BuildConfig.DEBUG) return
+        if (_state.value !is UpdateUiState.Idle) return
+        scope.launch {
+            val manifest = runCatching {
+                val json = appContext.assets.open("update_test.json")
+                    .bufferedReader(Charsets.UTF_8).use { it.readText() }
+                UpdateManifest.parse(json)
+            }.getOrNull() ?: return@launch
+            Log.d(TAG, "debugTestUpdate: url=${manifest.updateUrl}")
+            lastAvailableManifest = manifest
+            _state.value = UpdateUiState.Available(manifest, forced = false)
+        }
+    }
+
     /** 「不再提示」：记录当前远端版本，仅对该版本不再提示 */
     fun suppress() {
         lastAvailableManifest?.let { prefs.suppressedVersionCode = it.versionCode }
@@ -120,73 +145,50 @@ class UpdateManager private constructor(context: Context) {
 
     // ---------------------------------------------------------------- 下载
 
-    /** 「立即下载」：直接发起后台下载（安装权限在下载完成时再引导，避免反复拦截） */
+    /** 「立即下载」：启动前台下载服务，下载完成后自动引导安装 */
     fun downloadNow() {
         val manifest = lastAvailableManifest ?: return
-        scope.launch {
-            val downloadId = runCatching { downloader.start(manifest) }.getOrNull()
-            if (downloadId == null) {
-                _state.value = UpdateUiState.DownloadFailed(
-                    appContext.getString(R.string.update_download_start_failed)
-                )
-                return@launch
-            }
-            prefs.pendingDownloadId = downloadId
-            prefs.processedDownloadId = null
-            _state.value = UpdateUiState.Downloading(0f)
-            pollDownload(downloadId, manifest)
-        }
+        if (_state.value is UpdateUiState.Downloading) return
+        val appDownloader = AppDownloader.getInstance(appContext)
+        val dest = AppDownloader.resolveDestFile(appContext, manifest)
+        lastDownloadedFile = dest
+        Log.d(TAG, "downloadNow: url=${manifest.updateUrl}, dest=$dest")
+        _state.value = UpdateUiState.Downloading(0f)
+        ContextCompat.startForegroundService(
+            appContext,
+            DownloadService.startIntent(appContext, manifest.updateUrl, dest, manifest.versionName),
+        )
+        observeDownload(appDownloader)
     }
 
-    private suspend fun pollDownload(downloadId: Long, manifest: UpdateManifest) {
-        while (scope.coroutineContext.isActive) {
-            val progress = downloader.query(downloadId)
-            when (progress.status) {
-                DownloadManager.STATUS_RUNNING, DownloadManager.STATUS_PAUSED, DownloadManager.STATUS_PENDING -> {
-                    _state.value = UpdateUiState.Downloading(progress.progress)
-                    delay(UpdateConfig.PROGRESS_POLL_INTERVAL_MS)
-                }
-                DownloadManager.STATUS_SUCCESSFUL -> {
-                    processDownloadCompleted(downloadId)
-                    return
-                }
-                DownloadManager.STATUS_FAILED -> {
-                    prefs.pendingDownloadId = null
-                    downloader.cancel(downloadId)
-                    _state.value = UpdateUiState.DownloadFailed(
-                        appContext.getString(R.string.update_download_failed)
+    /** 取消当前下载 */
+    fun cancelDownload() {
+        AppDownloader.getInstance(appContext).cancel()
+        _state.value = UpdateUiState.Idle
+    }
+
+    private fun observeDownload(appDownloader: AppDownloader) {
+        scope.launch {
+            appDownloader.state.collect { s ->
+                when (s) {
+                    is DownloadState.Downloading -> _state.value = UpdateUiState.Downloading(
+                        progress = s.progress,
+                        bytesDownloaded = s.bytesDownloaded,
+                        totalBytes = s.totalBytes,
                     )
-                    return
+                    is DownloadState.Paused -> Unit // 保留当前进度显示
+                    is DownloadState.Success -> {
+                        lastDownloadedFile = s.file
+                        guideToInstall(s.file)
+                    }
+                    is DownloadState.Failed -> _state.value = UpdateUiState.DownloadFailed(s.message)
+                    DownloadState.Idle -> Unit
                 }
-                else -> delay(UpdateConfig.PROGRESS_POLL_INTERVAL_MS)
             }
         }
     }
 
     // ---------------------------------------------------------------- 完成/安装
-
-    /**
-     * 处理下载完成事件（轮询线程与系统接收器共用入口，跨进程去重）。
-     * @param downloadId 下载任务 id
-     */
-    fun processDownloadCompleted(downloadId: Long) {
-        if (prefs.pendingDownloadId != downloadId) return // 非本应用任务
-        if (prefs.processedDownloadId == downloadId) return // 已处理过
-        scope.launch {
-            val manifest = lastAvailableManifest
-            if (manifest == null) {
-                prefs.pendingDownloadId = null
-                return@launch
-            }
-            val progress = downloader.query(downloadId)
-            if (progress.status != DownloadManager.STATUS_SUCCESSFUL) return@launch
-            prefs.processedDownloadId = downloadId
-            prefs.pendingDownloadId = null
-            val file = downloader.destinationFile(downloadId, manifest)
-            lastDownloadedFile = file
-            guideToInstall(file)
-        }
-    }
 
     private fun guideToInstall(file: File?) {
         if (file == null || !file.exists() || file.length() == 0L) {
@@ -245,6 +247,8 @@ class UpdateManager private constructor(context: Context) {
         }.getOrDefault(0)
 
     companion object {
+        private const val TAG = "RunBeatUpdate"
+
         @Volatile
         private var instance: UpdateManager? = null
 
