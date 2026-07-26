@@ -37,6 +37,9 @@ enum class SoundType {
     CLICK,
     BEEP,
     WOOD,
+
+    /** 参考跑步节拍音效（重音≈2.38kHz / 轻音≈727Hz） */
+    RUN,
 }
 
 /** 节拍事件（由调度线程发出） */

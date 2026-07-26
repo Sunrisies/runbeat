@@ -549,6 +549,7 @@ private fun SoundSection(current: SoundType, onSelect: (SoundType) -> Unit) {
                 SoundType.CLICK -> "咔嗒"
                 SoundType.BEEP -> "哔声"
                 SoundType.WOOD -> "木鱼"
+                SoundType.RUN -> "跑步节拍"
             }
             FilterChip(
                 selected = current == sound,
@@ -564,6 +565,13 @@ private fun SoundSection(current: SoundType, onSelect: (SoundType) -> Unit) {
             )
         }
     }
+    Spacer(Modifier.height(6.dp))
+    Text(
+        text = "「跑步节拍」为参考跑步节拍音效（重音≈2.38kHz / 轻音≈727Hz），可用音调调节频率",
+        modifier = Modifier.fillMaxWidth(),
+        style = MaterialTheme.typography.labelSmall,
+        color = textSecondary(),
+    )
 }
 
 // ---------------------------------------------------------------- 音量

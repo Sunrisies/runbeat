@@ -154,6 +154,7 @@ class MetronomeViewModel(application: Application) : AndroidViewModel(applicatio
         SoundType.CLICK -> "咔嗒"
         SoundType.BEEP -> "哔声"
         SoundType.WOOD -> "木鱼"
+        SoundType.RUN -> "跑步节拍"
     }
 
     fun hasNotificationPermission(): Boolean {
