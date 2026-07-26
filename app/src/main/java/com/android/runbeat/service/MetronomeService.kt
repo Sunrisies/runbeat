@@ -150,7 +150,8 @@ class MetronomeService : Service() {
         _status.value = MetronomeStatus.STOPPED
         releaseWakeLock()
         abandonAudioFocus()
-        audioPlayer.release()
+        // 注意：不在停止时释放 audioPlayer —— 保持音频管线常热，
+        // 否则每次「开始」都会重新冷启动音频设备导致首拍延迟
         prefs.wasRunning = false
         stopForeground(STOP_FOREGROUND_DETACH)
         stopSelf()

@@ -60,9 +60,10 @@ class MetronomeAudioPlayer {
             AudioFormat.ENCODING_PCM_16BIT,
         )
         val minBuffer = if (minBufferRaw > 0) minBufferRaw else TickSoundSynth.SAMPLE_RATE
-        // 缓冲大小必须是帧大小的整数倍（mono/16-bit = 2 字节），否则 build() 抛异常
+        // 缓冲大小必须是帧大小的整数倍（mono/16-bit = 2 字节），否则 build() 抛异常。
+        // 尽量贴近 minBuffer 并仅容纳单拍（最长 90ms），以降低首拍输出延迟。
         val frameSizeBytes = 2
-        var bufferBytes = maxOf(minBuffer, TickSoundSynth.SAMPLE_RATE / 2)
+        var bufferBytes = maxOf(minBuffer, TickSoundSynth.SAMPLE_RATE / 5)
         if (bufferBytes % frameSizeBytes != 0) {
             bufferBytes += frameSizeBytes - bufferBytes % frameSizeBytes
         }

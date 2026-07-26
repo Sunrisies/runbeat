@@ -17,3 +17,4 @@ local.properties
 *.keystore
 app/release/
 MIGRATION.md
+/audio_synth
