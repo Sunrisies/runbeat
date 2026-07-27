@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -45,6 +46,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -55,6 +57,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.android.runbeat.BuildConfig
+import com.android.runbeat.metronome.core.IntervalPhase
+import com.android.runbeat.metronome.core.IntervalStatus
 import com.android.runbeat.metronome.core.MetronomeConstants
 import com.android.runbeat.metronome.core.MetronomeStatus
 import com.android.runbeat.metronome.core.SoundType
@@ -81,22 +85,7 @@ fun MetronomeScreen(
     viewModel: MetronomeViewModel = viewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
-    val settings = state.settings
     val dark = isSystemInDarkTheme()
-
-    val permissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        if (granted) viewModel.start()
-    }
-
-    val onStartClick: () -> Unit = {
-        if (viewModel.hasNotificationPermission()) {
-            viewModel.start()
-        } else {
-            permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-        }
-    }
 
     val currentBeat = state.lastTick?.let { it.beatIndex % MetronomeConstants.BEATS_PER_BAR + 1 }
 
@@ -145,12 +134,107 @@ fun MetronomeScreen(
                 }
             }
 
-            Spacer(Modifier.height(4.dp))
+            Spacer(Modifier.height(8.dp))
 
-            StatusHeader(
-                status = state.status,
-                currentBeat = currentBeat,
+            ModeSelector(
+                mode = state.mode,
+                onModeChange = viewModel::setMode,
             )
+
+            Spacer(Modifier.height(12.dp))
+
+            if (state.mode == MetronomeMode.BASIC) {
+                BasicModeContent(
+                    state = state,
+                    viewModel = viewModel,
+                    currentBeat = currentBeat,
+                    dark = dark,
+                )
+            } else {
+                IntervalModeContent(
+                    state = state,
+                    viewModel = viewModel,
+                    dark = dark,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ModeSelector(mode: MetronomeMode, onModeChange: (MetronomeMode) -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        ModeChip(
+            label = "基础节拍",
+            selected = mode == MetronomeMode.BASIC,
+            onClick = { onModeChange(MetronomeMode.BASIC) },
+            modifier = Modifier.weight(1f),
+        )
+        ModeChip(
+            label = "循环训练",
+            selected = mode == MetronomeMode.INTERVAL,
+            onClick = { onModeChange(MetronomeMode.INTERVAL) },
+            modifier = Modifier.weight(1f),
+        )
+    }
+}
+
+@Composable
+private fun ModeChip(label: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(16.dp),
+        color = if (selected) AccentBeat else Color.Transparent,
+        border = if (selected) null else BorderStroke(1.dp, textSecondary().copy(alpha = 0.3f)),
+        onClick = onClick,
+    ) {
+        Box(
+            modifier = Modifier.fillMaxWidth().height(46.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = label,
+                fontWeight = FontWeight.Bold,
+                color = if (selected) Color.White else textPrimary(),
+            )
+        }
+    }
+}
+
+@Composable
+private fun BasicModeContent(
+    state: MetronomeUiState,
+    viewModel: MetronomeViewModel,
+    currentBeat: Int?,
+    dark: Boolean,
+) {
+    val settings = state.settings
+    val cardColor = if (dark) RunCardDark else RunCardLight
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) viewModel.start()
+    }
+    val onStartClick: () -> Unit = {
+        if (viewModel.hasNotificationPermission()) {
+            viewModel.start()
+        } else {
+            permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        StatusHeader(
+            status = state.status,
+            currentBeat = currentBeat,
+        )
 
             Spacer(Modifier.height(16.dp))
 
@@ -219,9 +303,271 @@ fun MetronomeScreen(
             Spacer(Modifier.height(20.dp))
         }
     }
+
+// ---------------------------------------------------------------- 循环训练模式
+
+@Composable
+private fun IntervalModeContent(
+    state: MetronomeUiState,
+    viewModel: MetronomeViewModel,
+    dark: Boolean,
+) {
+    val settings = state.settings
+    val cardColor = if (dark) RunCardDark else RunCardLight
+    val iv = state.interval
+
+    // 状态头
+    val (phaseLabel, phaseColor) = when {
+        iv.status == IntervalStatus.IDLE -> "循环未开始" to textSecondary()
+        iv.status == IntervalStatus.PAUSED -> "已暂停" to PausedAmber
+        iv.phase == IntervalPhase.WORK -> "工作中" to RunningGreen
+        else -> "休息中" to PausedAmber
+    }
+
+    Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+        // 状态卡
+        Surface(
+            shape = RoundedCornerShape(24.dp),
+            color = cardColor,
+            shadowElevation = 8.dp,
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 18.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    PulsingDot(color = phaseColor, pulsing = iv.status == IntervalStatus.RUNNING)
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = phaseLabel,
+                        color = phaseColor,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+                Spacer(Modifier.height(6.dp))
+                if (iv.status != IntervalStatus.IDLE) {
+                    Text(
+                        text = "第 ${iv.round} 轮 · 剩余 ${iv.remainingText()}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = textSecondary(),
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    // 阶段进度条
+                    val fraction = if (iv.phaseDurationSec > 0) {
+                        (1f - iv.phaseRemainingSec.toFloat() / iv.phaseDurationSec).coerceIn(0f, 1f)
+                    } else 0f
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 28.dp)
+                            .height(8.dp)
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(textSecondary().copy(alpha = 0.12f)),
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth(fraction)
+                                .fillMaxHeight()
+                                .background(Brush.horizontalGradient(listOf(AccentBeat, RunTeal))),
+                        )
+                    }
+                } else {
+                    Text(
+                        text = "设置工作/休息时长后开始循环",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = textSecondary(),
+                    )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(14.dp))
+
+        // 间隔配置卡
+        SectionCard(title = "间隔设置", cardColor = cardColor) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                MinuteStepper(
+                    label = "工作(分钟)",
+                    value = state.intervalWorkMinutes,
+                    color = RunningGreen,
+                    onDecrement = { viewModel.setIntervalWorkMinutes(state.intervalWorkMinutes - 1) },
+                    onIncrement = { viewModel.setIntervalWorkMinutes(state.intervalWorkMinutes + 1) },
+                    modifier = Modifier.weight(1f),
+                )
+                MinuteStepper(
+                    label = "休息(分钟)",
+                    value = state.intervalRestMinutes,
+                    color = RunTeal,
+                    onDecrement = { viewModel.setIntervalRestMinutes(state.intervalRestMinutes - 1) },
+                    onIncrement = { viewModel.setIntervalRestMinutes(state.intervalRestMinutes + 1) },
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            Spacer(Modifier.height(12.dp))
+            Text(
+                text = "快捷组合",
+                style = MaterialTheme.typography.labelMedium,
+                color = textSecondary(),
+            )
+            Spacer(Modifier.height(6.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                IntervalPresetChip("1跑1走", 1, 1, state, viewModel)
+                IntervalPresetChip("1跑2走", 1, 2, state, viewModel)
+                IntervalPresetChip("2跑1走", 2, 1, state, viewModel)
+            }
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text = "范围 1–60 分钟，参数已自动保存",
+                style = MaterialTheme.typography.labelSmall,
+                color = textSecondary(),
+            )
+        }
+
+        Spacer(Modifier.height(14.dp))
+
+        // 步频卡（工作阶段节拍）
+        SectionCard(title = "工作步频", cardColor = cardColor) {
+            BpmSliderSection(
+                bpm = settings.bpm,
+                onBpmChange = viewModel::setBpm,
+                onDecrement = { viewModel.setBpm(settings.bpm - MetronomeConstants.BPM_STEP) },
+                onIncrement = { viewModel.setBpm(settings.bpm + MetronomeConstants.BPM_STEP) },
+            )
+        }
+
+        Spacer(Modifier.height(24.dp))
+
+        IntervalControlButtons(iv.status, viewModel)
+
+        Spacer(Modifier.height(20.dp))
+    }
 }
 
-// ---------------------------------------------------------------- 状态头
+@Composable
+private fun MinuteStepper(
+    label: String,
+    value: Int,
+    color: Color,
+    onDecrement: () -> Unit,
+    onIncrement: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(label, style = MaterialTheme.typography.labelMedium, color = textSecondary())
+        Spacer(Modifier.height(6.dp))
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(14.dp),
+            color = color.copy(alpha = 0.10f),
+            border = BorderStroke(1.dp, color.copy(alpha = 0.35f)),
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                TextButton(onClick = onIncrement) { Text("＋", color = color, fontSize = 20.sp) }
+                Text(
+                    text = "$value",
+                    fontSize = 34.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = color,
+                )
+                Text("分钟", style = MaterialTheme.typography.labelSmall, color = textSecondary())
+                TextButton(onClick = onDecrement) { Text("－", color = color, fontSize = 20.sp) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun IntervalPresetChip(
+    label: String,
+    work: Int,
+    rest: Int,
+    state: MetronomeUiState,
+    viewModel: MetronomeViewModel,
+) {
+    val selected = state.intervalWorkMinutes == work && state.intervalRestMinutes == rest
+    FilterChip(
+        selected = selected,
+        onClick = {
+            viewModel.setIntervalWorkMinutes(work)
+            viewModel.setIntervalRestMinutes(rest)
+        },
+        label = { Text(label, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium) },
+        colors = FilterChipDefaults.filterChipColors(
+            containerColor = Color.Transparent,
+            labelColor = textPrimary(),
+            selectedContainerColor = AccentBeat.copy(alpha = 0.14f),
+            selectedLabelColor = AccentBeat,
+        ),
+        leadingIcon = null,
+    )
+}
+
+@Composable
+private fun IntervalControlButtons(status: IntervalStatus, viewModel: MetronomeViewModel) {
+    when (status) {
+        IntervalStatus.IDLE -> {
+            Button(
+                onClick = viewModel::startInterval,
+                modifier = Modifier.fillMaxWidth().height(60.dp),
+                shape = RoundedCornerShape(20.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = RunningGreen, contentColor = Color.White),
+            ) {
+                Text("开始循环", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+        IntervalStatus.RUNNING -> {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                Button(
+                    onClick = viewModel::pauseInterval,
+                    modifier = Modifier.weight(1f).height(60.dp),
+                    shape = RoundedCornerShape(20.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = PausedAmber, contentColor = Color.White),
+                ) {
+                    Text("暂停", fontSize = 19.sp, fontWeight = FontWeight.Bold)
+                }
+                OutlinedButton(
+                    onClick = viewModel::stopInterval,
+                    modifier = Modifier.weight(1f).height(60.dp),
+                    shape = RoundedCornerShape(20.dp),
+                ) {
+                    Text("终止", fontSize = 19.sp)
+                }
+            }
+        }
+        IntervalStatus.PAUSED -> {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                Button(
+                    onClick = viewModel::resumeInterval,
+                    modifier = Modifier.weight(1f).height(60.dp),
+                    shape = RoundedCornerShape(20.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = RunningGreen, contentColor = Color.White),
+                ) {
+                    Text("继续", fontSize = 19.sp, fontWeight = FontWeight.Bold)
+                }
+                OutlinedButton(
+                    onClick = viewModel::stopInterval,
+                    modifier = Modifier.weight(1f).height(60.dp),
+                    shape = RoundedCornerShape(20.dp),
+                ) {
+                    Text("终止", fontSize = 19.sp)
+                }
+            }
+        }
+    }
+}
 
 @Composable
 private fun StatusHeader(status: MetronomeStatus, currentBeat: Int?) {

@@ -30,13 +30,21 @@ import com.android.runbeat.metronome.core.TickEvent
 import com.android.runbeat.metronome.settings.MetronomePrefs
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import com.android.runbeat.metronome.core.IntervalEngine
+import com.android.runbeat.metronome.core.IntervalPhase
+import com.android.runbeat.metronome.core.IntervalSnapshot
+import com.android.runbeat.metronome.core.IntervalStatus
 
 /**
  * 节拍器前台服务。
@@ -60,6 +68,9 @@ class MetronomeService : Service() {
 
     private val _ticks = MutableSharedFlow<TickEvent>(extraBufferCapacity = 8)
     val ticks: SharedFlow<TickEvent> = _ticks.asSharedFlow()
+
+    private val _interval = MutableStateFlow(IntervalSnapshot())
+    val interval: StateFlow<IntervalSnapshot> = _interval.asStateFlow()
 
     private var audioManager: AudioManager? = null
     private var audioFocusRequest: AudioFocusRequest? = null
@@ -129,6 +140,10 @@ class MetronomeService : Service() {
     }
 
     fun pause() {
+        if (isIntervalActive()) {
+            pauseInterval()
+            return
+        }
         if (_status.value != MetronomeStatus.RUNNING) return
         engine.pause()
         _status.value = MetronomeStatus.PAUSED
@@ -137,6 +152,10 @@ class MetronomeService : Service() {
     }
 
     fun resume() {
+        if (isIntervalActive()) {
+            resumeInterval()
+            return
+        }
         if (_status.value != MetronomeStatus.PAUSED) return
         acquireWakeLock()
         requestAudioFocus()
@@ -146,6 +165,10 @@ class MetronomeService : Service() {
     }
 
     fun stopAndSelf() {
+        if (isIntervalActive()) {
+            stopInterval()
+            return
+        }
         engine.stop()
         _status.value = MetronomeStatus.STOPPED
         releaseWakeLock()
@@ -192,6 +215,102 @@ class MetronomeService : Service() {
         audioPlayer.setVolume(percent)
     }
 
+    // ---------------------------------------------------------------- 循环模式
+
+    @Volatile
+    private var intervalEngine: IntervalEngine? = null
+
+    private var intervalJob: Job? = null
+
+    /** 循环模式是否激活 */
+    fun isIntervalActive(): Boolean = _interval.value.status != IntervalStatus.IDLE
+
+    fun startInterval(workMinutes: Int, restMinutes: Int) {
+        if (_interval.value.status == IntervalStatus.RUNNING) return
+        // 基础模式若在运行则先停
+        if (_status.value != MetronomeStatus.STOPPED) {
+            engine.stop()
+            _status.value = MetronomeStatus.STOPPED
+        }
+        val eng = IntervalEngine(workMinutes, restMinutes)
+        intervalEngine = eng
+        engine.start(_settings.value.bpm, tickListener) // 工作阶段开始响
+        eng.start()
+        _interval.value = eng.snapshot()
+        try {
+            promoteToForeground()
+        } catch (_: SecurityException) {
+        }
+        acquireWakeLock()
+        updateNotification()
+        observeInterval(eng)
+    }
+
+    fun pauseInterval() {
+        val eng = intervalEngine ?: return
+        if (eng.snapshot().status != IntervalStatus.RUNNING) return
+        eng.pause()
+        engine.pause()
+        _interval.value = eng.snapshot()
+        updateNotification()
+    }
+
+    fun resumeInterval() {
+        val eng = intervalEngine ?: return
+        if (eng.snapshot().status != IntervalStatus.PAUSED) return
+        eng.resume()
+        if (eng.snapshot().phase == IntervalPhase.WORK) {
+            engine.resume()
+        } else {
+            engine.start(_settings.value.bpm, tickListener)
+        }
+        _interval.value = eng.snapshot()
+        updateNotification()
+    }
+
+    fun stopInterval() {
+        intervalJob?.cancel()
+        intervalJob = null
+        intervalEngine?.stop()
+        intervalEngine = null
+        engine.stop()
+        _interval.value = IntervalSnapshot()
+        _status.value = MetronomeStatus.STOPPED
+        releaseWakeLock()
+        stopForeground(STOP_FOREGROUND_DETACH)
+        stopSelf()
+    }
+
+    private fun observeInterval(eng: IntervalEngine) {
+        intervalJob?.cancel()
+        intervalJob = scope.launch {
+            var lastPhase: IntervalPhase? = null
+            while (isActive) {
+                val snap = eng.snapshot()
+                if (lastPhase != null && snap.status == IntervalStatus.RUNNING && snap.phase != lastPhase) {
+                    onIntervalPhaseChange(snap.phase)
+                }
+                lastPhase = snap.phase
+                _interval.value = snap
+                delay(INTERVAL_POLL_MS)
+            }
+        }
+    }
+
+    private fun onIntervalPhaseChange(phase: IntervalPhase) {
+        when (phase) {
+            IntervalPhase.WORK -> {
+                engine.start(_settings.value.bpm, tickListener)
+                audioPlayer.playCue(workStart = true)
+            }
+            IntervalPhase.REST -> {
+                engine.stop()
+                audioPlayer.playCue(workStart = false)
+            }
+        }
+        updateNotification()
+    }
+
     // ---------------------------------------------------------------- 前台 / 通知
 
     private fun promoteToForeground() {
@@ -220,11 +339,16 @@ class MetronomeService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
         val s = _settings.value
-        val running = _status.value == MetronomeStatus.RUNNING
-        val text = if (running) {
-            getString(R.string.notification_running, s.bpm)
-        } else {
-            getString(R.string.notification_paused)
+        val iv = _interval.value
+        val intervalActive = iv.status != IntervalStatus.IDLE
+        val running = if (intervalActive) iv.status == IntervalStatus.RUNNING else _status.value == MetronomeStatus.RUNNING
+        val text = when {
+            intervalActive -> {
+                val phase = if (iv.phase == IntervalPhase.WORK) "工作中" else "休息中"
+                "循环 $phase · 第${iv.round}轮 · 剩余 ${iv.remainingText()}"
+            }
+            running -> getString(R.string.notification_running, s.bpm)
+            else -> getString(R.string.notification_paused)
         }
         val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             Notification.Builder(ctx, CHANNEL_ID)
@@ -369,6 +493,7 @@ class MetronomeService : Service() {
         private const val CHANNEL_ID = "metronome_running"
         private const val WAKELOCK_TIMEOUT_MS = 6 * 60 * 60 * 1000L // 6h
         private const val BPM_CHANGE_RESTART_DEBOUNCE_MS = 150L
+        private const val INTERVAL_POLL_MS = 200L
 
         const val ACTION_START = "com.android.runbeat.action.START"
         const val ACTION_PAUSE = "com.android.runbeat.action.PAUSE"

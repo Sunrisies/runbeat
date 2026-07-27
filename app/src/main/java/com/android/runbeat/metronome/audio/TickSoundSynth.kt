@@ -86,6 +86,24 @@ object TickSoundSynth {
         return normalize(raw, if (accent) ACCENT_GAIN else SOFT_GAIN)
     }
 
+    /** 过渡提示音：工作开始=上行双音，休息开始=低音 */
+    fun renderCue(workStart: Boolean): ShortArray =
+        if (workStart) {
+            concat(tone(1200.0, 0.14, 16.0, intArrayOf(1), 0.9), tone(1700.0, 0.18, 14.0, intArrayOf(1), 0.9))
+        } else {
+            tone(620.0, 0.22, 12.0, intArrayOf(1), 0.9)
+        }
+
+    private fun concat(vararg arrays: ShortArray): ShortArray {
+        val out = ShortArray(arrays.sumOf { it.size })
+        var off = 0
+        for (a in arrays) {
+            System.arraycopy(a, 0, out, off, a.size)
+            off += a.size
+        }
+        return out
+    }
+
     private fun tone(
         baseFreq: Double,
         durationSec: Double,

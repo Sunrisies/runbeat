@@ -104,6 +104,17 @@ class MetronomeAudioPlayer {
         }
     }
 
+    /** 播放过渡提示音（工作开始/休息开始） */
+    fun playCue(workStart: Boolean) {
+        val t = track ?: return
+        val buffer = TickSoundSynth.renderCue(workStart)
+        try {
+            t.play()
+            t.write(buffer, 0, buffer.size)
+        } catch (_: IllegalStateException) {
+        }
+    }
+
     /** 暂停并释放硬件资源 */
     fun release() {
         synchronized(lock) {

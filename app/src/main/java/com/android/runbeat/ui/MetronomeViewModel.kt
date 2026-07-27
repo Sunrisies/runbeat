@@ -12,6 +12,8 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.android.runbeat.service.MetronomeService
+import com.android.runbeat.metronome.core.IntervalSnapshot
+import com.android.runbeat.metronome.core.IntervalStatus
 import com.android.runbeat.metronome.core.MetronomeSettings
 import com.android.runbeat.metronome.core.MetronomeStatus
 import com.android.runbeat.metronome.core.SoundType
@@ -25,6 +27,9 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
+/** 界面模式 */
+enum class MetronomeMode { BASIC, INTERVAL }
+
 /** UI 状态聚合 */
 data class MetronomeUiState(
     val settings: MetronomeSettings = MetronomeSettings(),
@@ -32,6 +37,10 @@ data class MetronomeUiState(
     val lastTick: TickEvent? = null,
     val customPresetBpm: Int? = null,
     val serviceBound: Boolean = false,
+    val mode: MetronomeMode = MetronomeMode.BASIC,
+    val intervalWorkMinutes: Int = 1,
+    val intervalRestMinutes: Int = 1,
+    val interval: IntervalSnapshot = IntervalSnapshot(),
 )
 
 /**
@@ -46,6 +55,8 @@ class MetronomeViewModel(application: Application) : AndroidViewModel(applicatio
         MetronomeUiState(
             settings = prefs.loadSettings(),
             customPresetBpm = prefs.loadCustomPresetBpm(),
+            intervalWorkMinutes = prefs.loadIntervalWorkMinutes(),
+            intervalRestMinutes = prefs.loadIntervalRestMinutes(),
         )
     )
     val uiState: StateFlow<MetronomeUiState> = _uiState.asStateFlow()
@@ -74,6 +85,11 @@ class MetronomeViewModel(application: Application) : AndroidViewModel(applicatio
                     s.ticks.collect { tick ->
                         _ticks.emit(tick)
                         update { it.copy(lastTick = tick) }
+                    }
+                }
+                viewModelScope.launch {
+                    s.interval.collect { snap ->
+                        update { it.copy(interval = snap) }
                     }
                 }
             }
@@ -127,6 +143,43 @@ class MetronomeViewModel(application: Application) : AndroidViewModel(applicatio
         update { it.copy(settings = updated) }
         service?.changeBpm(updated.bpm)
     }
+
+    // ---------------------------------------------------------------- 模式与循环
+
+    fun setMode(mode: MetronomeMode) {
+        val cur = _uiState.value
+        if (cur.mode == mode) return
+        // 切换到基础模式时, 若循环在运行则先停止
+        if (mode == MetronomeMode.BASIC && cur.interval.status != IntervalStatus.IDLE) {
+            service?.stopInterval()
+        }
+        update { it.copy(mode = mode) }
+    }
+
+    fun setIntervalWorkMinutes(value: Int) {
+        val work = value.coerceIn(1, 60)
+        val rest = _uiState.value.intervalRestMinutes
+        prefs.saveIntervalMinutes(work, rest)
+        update { it.copy(intervalWorkMinutes = work) }
+    }
+
+    fun setIntervalRestMinutes(value: Int) {
+        val work = _uiState.value.intervalWorkMinutes
+        val rest = value.coerceIn(1, 60)
+        prefs.saveIntervalMinutes(work, rest)
+        update { it.copy(intervalRestMinutes = rest) }
+    }
+
+    fun startInterval() {
+        val s = _uiState.value
+        service?.startInterval(s.intervalWorkMinutes, s.intervalRestMinutes)
+    }
+
+    fun pauseInterval() = service?.pauseInterval()
+
+    fun resumeInterval() = service?.resumeInterval()
+
+    fun stopInterval() = service?.stopInterval()
 
     fun changeSound(sound: SoundType) {
         val updated = _uiState.value.settings.withSound(sound)

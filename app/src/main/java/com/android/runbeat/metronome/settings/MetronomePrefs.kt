@@ -37,6 +37,17 @@ class MetronomePrefs(context: Context) {
         prefs.edit().putInt(KEY_CUSTOM_BPM, bpm).apply()
     }
 
+    /** 循环模式：上次工作/休息时长（分钟） */
+    fun loadIntervalWorkMinutes(): Int = prefs.getInt(KEY_INTERVAL_WORK, 1).coerceIn(1, 60)
+    fun loadIntervalRestMinutes(): Int = prefs.getInt(KEY_INTERVAL_REST, 1).coerceIn(1, 60)
+
+    fun saveIntervalMinutes(work: Int, rest: Int) {
+        prefs.edit()
+            .putInt(KEY_INTERVAL_WORK, work.coerceIn(1, 60))
+            .putInt(KEY_INTERVAL_REST, rest.coerceIn(1, 60))
+            .apply()
+    }
+
     /** 服务恢复标记：用于进程被杀后前台服务重建时恢复运行态 */
     var wasRunning: Boolean
         get() = prefs.getBoolean(KEY_WAS_RUNNING, false)
@@ -48,6 +59,8 @@ class MetronomePrefs(context: Context) {
         private const val KEY_SOUND = "sound"
         private const val KEY_VOLUME = "volume"
         private const val KEY_CUSTOM_BPM = "custom_bpm"
+        private const val KEY_INTERVAL_WORK = "interval_work"
+        private const val KEY_INTERVAL_REST = "interval_rest"
         private const val KEY_WAS_RUNNING = "was_running"
     }
 }
