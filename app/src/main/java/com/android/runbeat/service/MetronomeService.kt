@@ -21,6 +21,7 @@ import android.os.PowerManager
 import com.android.runbeat.MainActivity
 import com.android.runbeat.R
 import com.android.runbeat.metronome.audio.MetronomeAudioPlayer
+import com.android.runbeat.metronome.audio.SpeechPlayer
 import com.android.runbeat.metronome.core.MetronomeConstants
 import com.android.runbeat.metronome.core.MetronomeEngine
 import com.android.runbeat.metronome.core.MetronomeSettings
@@ -41,6 +42,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import com.android.runbeat.metronome.core.CountdownTrigger
 import com.android.runbeat.metronome.core.IntervalEngine
 import com.android.runbeat.metronome.core.IntervalPhase
 import com.android.runbeat.metronome.core.IntervalSnapshot
@@ -81,6 +83,14 @@ class MetronomeService : Service() {
 
     private val mainHandler = Handler(Looper.getMainLooper())
 
+    // 倒计时语音播报（内置预合成语音，离线可用）
+    private val speechPlayer = SpeechPlayer(this)
+
+    private val _ttsReady = MutableStateFlow(true)
+    val ttsReady: StateFlow<Boolean> = _ttsReady.asStateFlow()
+
+    private var lastCountdownSec = -1
+
     /** BPM 修改去抖：拖动结束后 150ms 自动重启节拍，让新步频立即生效 */
     private val debouncedRestart = Runnable { engine.restart() }
 
@@ -100,6 +110,14 @@ class MetronomeService : Service() {
         audioPlayer.ensureStarted(_settings.value.soundType, _settings.value.volumePercent)
         audioManager = getSystemService(AUDIO_SERVICE) as AudioManager
         createNotificationChannel()
+        // 内置语音播报（预合成 PCM，离线可用）
+        speechPlayer.ensureStarted()
+        _ttsReady.value = true
+    }
+
+    /** 手动测试语音播报 */
+    fun testTts() {
+        speechPlayer.speakRaw(R.raw.countdown_5)
     }
 
     override fun onBind(intent: Intent?): IBinder = binder
@@ -283,7 +301,7 @@ class MetronomeService : Service() {
 
     private fun observeInterval(eng: IntervalEngine) {
         intervalJob?.cancel()
-        intervalJob = scope.launch {
+        intervalJob = scope.launch(Dispatchers.IO) {
             var lastPhase: IntervalPhase? = null
             while (isActive) {
                 val snap = eng.snapshot()
@@ -292,20 +310,49 @@ class MetronomeService : Service() {
                 }
                 lastPhase = snap.phase
                 _interval.value = snap
+                checkCountdown(snap)
                 delay(INTERVAL_POLL_MS)
             }
         }
+    }
+
+    /** 最后 5 秒倒计时：精准在窗口内触发，同一秒只播报一次 */
+    private fun checkCountdown(snap: IntervalSnapshot) {
+        if (snap.status != IntervalStatus.RUNNING) {
+            lastCountdownSec = -1
+            return
+        }
+        val next = CountdownTrigger.nextAnnouncement(snap.phaseRemainingSec, lastCountdownSec)
+        if (next != null) {
+            lastCountdownSec = next
+            announceCountdown(next)
+        } else if (snap.phaseRemainingSec > CountdownTrigger.COUNTDOWN_WINDOW_SEC) {
+            lastCountdownSec = -1
+        }
+    }
+
+    private fun announceCountdown(sec: Int) {
+        // 播报预合成的数字语音（离线，无系统TTS依赖）
+        speechPlayer.speakRaw(countdownRaw(sec))
+    }
+
+    private fun countdownRaw(sec: Int): Int = when (sec) {
+        5 -> R.raw.countdown_5
+        4 -> R.raw.countdown_4
+        3 -> R.raw.countdown_3
+        2 -> R.raw.countdown_2
+        else -> R.raw.countdown_1
     }
 
     private fun onIntervalPhaseChange(phase: IntervalPhase) {
         when (phase) {
             IntervalPhase.WORK -> {
                 engine.start(_settings.value.bpm, tickListener)
-                audioPlayer.playCue(workStart = true)
+                speechPlayer.speakRaw(R.raw.cue_work_start)
             }
             IntervalPhase.REST -> {
                 engine.stop()
-                audioPlayer.playCue(workStart = false)
+                speechPlayer.speakRaw(R.raw.cue_rest)
             }
         }
         updateNotification()
@@ -479,6 +526,7 @@ class MetronomeService : Service() {
         releaseWakeLock()
         abandonAudioFocus()
         audioPlayer.release()
+        speechPlayer.release()
         super.onDestroy()
     }
 

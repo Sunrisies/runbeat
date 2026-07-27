@@ -110,3 +110,25 @@ class IntervalEngine(
 
     private fun phaseDurationMs(): Long = if (phase == IntervalPhase.WORK) workMs else restMs
 }
+
+/**
+ * 阶段末倒计时触发器（纯逻辑，可 JVM 单测）。
+ * 仅当阶段剩余秒数进入 [COUNTDOWN_WINDOW_SEC]（5秒）区间时触发，
+ * 且同一秒只触发一次（[nextAnnouncement] 返回 null 表示不应播报）。
+ */
+object CountdownTrigger {
+    const val COUNTDOWN_WINDOW_SEC = 5L
+
+    /**
+     * @param remainingSec   当前阶段剩余秒数
+     * @param lastAnnounced  本阶段上次已播报的秒数（初始 -1）
+     * @return 本次应播报的秒数（5→1）；不在窗口内或已播报过则返回 null
+     */
+    fun nextAnnouncement(remainingSec: Long, lastAnnounced: Int): Int? {
+        if (remainingSec <= 0) return null
+        if (remainingSec > COUNTDOWN_WINDOW_SEC) return null
+        val sec = remainingSec.toInt()
+        if (sec <= 0 || sec > COUNTDOWN_WINDOW_SEC.toInt()) return null
+        return if (sec == lastAnnounced) null else sec
+    }
+}

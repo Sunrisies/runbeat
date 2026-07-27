@@ -41,6 +41,7 @@ data class MetronomeUiState(
     val intervalWorkMinutes: Int = 1,
     val intervalRestMinutes: Int = 1,
     val interval: IntervalSnapshot = IntervalSnapshot(),
+    val ttsReady: Boolean = false,
 )
 
 /**
@@ -90,6 +91,11 @@ class MetronomeViewModel(application: Application) : AndroidViewModel(applicatio
                 viewModelScope.launch {
                     s.interval.collect { snap ->
                         update { it.copy(interval = snap) }
+                    }
+                }
+                viewModelScope.launch {
+                    s.ttsReady.collect { ready ->
+                        update { it.copy(ttsReady = ready) }
                     }
                 }
             }
@@ -180,6 +186,9 @@ class MetronomeViewModel(application: Application) : AndroidViewModel(applicatio
     fun resumeInterval() = service?.resumeInterval()
 
     fun stopInterval() = service?.stopInterval()
+
+    /** 测试语音播报 */
+    fun testTts() = service?.testTts()
 
     fun changeSound(sound: SoundType) {
         val updated = _uiState.value.settings.withSound(sound)

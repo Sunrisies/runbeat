@@ -10,9 +10,10 @@ import com.android.runbeat.metronome.core.TickEvent
 /**
  * 基于 AudioTrack 的节拍音效播放器。
  *
- * 采用 MODE_STREAM 模式：调度线程每拍写入一段预渲染 PCM 短音。
- * 短音长度（45-90ms）远小于节拍间隔（≥300ms），不会发生数据堆积；
- * 音量通过 AudioTrack 线性增益控制，输出一致性好。
+ * 采用 MODE_STREAM 模式：每拍写入一段预渲染 PCM 短音。
+ * 所有 AudioTrack 访问（play/write/setVolume/release）均通过 [lock] 串行化——
+ * 节拍调度线程、循环模式提示音线程可能并发访问同一 track，
+ * 不加锁会破坏原生层缓冲区状态，导致 SIGSEGV 崩溃。
  */
 class MetronomeAudioPlayer {
 
@@ -25,14 +26,13 @@ class MetronomeAudioPlayer {
 
     /**
      * 开始/切换音色时初始化播放器。
-     * 首次创建时会预热音频管线（启动 + 写入静音），
-     * 消除安卓设备音频冷启动导致的「点击开始后数秒才出声」问题。
+     * 首次创建时会预热音频管线（启动 + 写入静音），消除「点击开始后数秒才出声」。
      */
     fun ensureStarted(sound: SoundType, volumePercent: Int) {
         synchronized(lock) {
             this.volumePercent = volumePercent
             if (track != null) {
-                setVolume(volumePercent)
+                setVolumeLocked(volumePercent)
                 return
             }
             val t = buildTrack()
@@ -60,8 +60,7 @@ class MetronomeAudioPlayer {
             AudioFormat.ENCODING_PCM_16BIT,
         )
         val minBuffer = if (minBufferRaw > 0) minBufferRaw else TickSoundSynth.SAMPLE_RATE
-        // 缓冲大小必须是帧大小的整数倍（mono/16-bit = 2 字节），否则 build() 抛异常。
-        // 尽量贴近 minBuffer 并仅容纳单拍（最长 90ms），以降低首拍输出延迟。
+        // 缓冲大小必须是帧大小的整数倍（mono/16-bit = 2 字节），否则 build() 抛异常
         val frameSizeBytes = 2
         var bufferBytes = maxOf(minBuffer, TickSoundSynth.SAMPLE_RATE / 5)
         if (bufferBytes % frameSizeBytes != 0) {
@@ -87,35 +86,46 @@ class MetronomeAudioPlayer {
     }
 
     fun setVolume(percent: Int) {
+        synchronized(lock) {
+            volumePercent = percent
+            track?.setVolume(percent / 100f)
+        }
+    }
+
+    private fun setVolumeLocked(percent: Int) {
         volumePercent = percent
         track?.setVolume(percent / 100f)
     }
 
-    /** 播放一拍。若音量/音色变化则应用最新值。 */
+    /** 播放一拍（锁内执行，避免与其他线程写 track 并发）。 */
     fun play(event: TickEvent, sound: SoundType, volumePercent: Int) {
-        setVolume(volumePercent)
-        val t = track ?: return
-        val buffer = TickSoundSynth.render(sound, event.accent)
-        try {
-            t.play()
-            t.write(buffer, 0, buffer.size)
-        } catch (_: IllegalStateException) {
-            // 播放器处于不可用状态（如音频焦点被抢占），静默跳过本拍
+        synchronized(lock) {
+            setVolumeLocked(volumePercent)
+            val t = track ?: return
+            val buffer = TickSoundSynth.render(sound, event.accent)
+            try {
+                t.play()
+                t.write(buffer, 0, buffer.size)
+            } catch (_: IllegalStateException) {
+                // 播放器处于不可用状态（如音频焦点被抢占），静默跳过本拍
+            }
         }
     }
 
-    /** 播放过渡提示音（工作开始/休息开始） */
+    /** 播放过渡/倒计时提示音（锁内执行）。 */
     fun playCue(workStart: Boolean) {
-        val t = track ?: return
-        val buffer = TickSoundSynth.renderCue(workStart)
-        try {
-            t.play()
-            t.write(buffer, 0, buffer.size)
-        } catch (_: IllegalStateException) {
+        synchronized(lock) {
+            val t = track ?: return
+            val buffer = TickSoundSynth.renderCue(workStart)
+            try {
+                t.play()
+                t.write(buffer, 0, buffer.size)
+            } catch (_: IllegalStateException) {
+            }
         }
     }
 
-    /** 暂停并释放硬件资源 */
+    /** 释放硬件资源 */
     fun release() {
         synchronized(lock) {
             try {

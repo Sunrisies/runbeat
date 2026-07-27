@@ -57,6 +57,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.android.runbeat.BuildConfig
+import com.android.runbeat.metronome.core.CountdownTrigger
 import com.android.runbeat.metronome.core.IntervalPhase
 import com.android.runbeat.metronome.core.IntervalStatus
 import com.android.runbeat.metronome.core.MetronomeConstants
@@ -346,12 +347,25 @@ private fun IntervalModeContent(
                     )
                 }
                 Spacer(Modifier.height(6.dp))
+                val countingDown = iv.status == IntervalStatus.RUNNING &&
+                    iv.phaseRemainingSec in 1..CountdownTrigger.COUNTDOWN_WINDOW_SEC
                 if (iv.status != IntervalStatus.IDLE) {
-                    Text(
-                        text = "第 ${iv.round} 轮 · 剩余 ${iv.remainingText()}",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = textSecondary(),
-                    )
+                    if (countingDown) {
+                        // 阶段末 5 秒倒计时文字提示
+                        Text(
+                            text = "还剩 ${iv.phaseRemainingSec} 秒",
+                            fontSize = 44.sp,
+                            lineHeight = 48.sp,
+                            fontWeight = FontWeight.Black,
+                            color = phaseColor,
+                        )
+                    } else {
+                        Text(
+                            text = "第 ${iv.round} 轮 · 剩余 ${iv.remainingText()}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = textSecondary(),
+                        )
+                    }
                     Spacer(Modifier.height(10.dp))
                     // 阶段进度条
                     val fraction = if (iv.phaseDurationSec > 0) {
@@ -378,6 +392,29 @@ private fun IntervalModeContent(
                         style = MaterialTheme.typography.bodyMedium,
                         color = textSecondary(),
                     )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(8.dp))
+
+        // 语音播报状态
+        Surface(
+            shape = RoundedCornerShape(14.dp),
+            color = cardColor,
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "语音播报：内置语音（离线，无需系统TTS）",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = RunningGreen,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(onClick = viewModel::testTts) {
+                    Text("测试语音", color = AccentBeat)
                 }
             }
         }
