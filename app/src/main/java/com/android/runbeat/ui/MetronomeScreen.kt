@@ -82,7 +82,6 @@ import kotlin.math.roundToInt
 fun MetronomeScreen(
     modifier: Modifier = Modifier,
     onCheckUpdate: () -> Unit = {},
-    onTestUpdate: () -> Unit = {},
     viewModel: MetronomeViewModel = viewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -123,15 +122,6 @@ fun MetronomeScreen(
                         style = MaterialTheme.typography.labelMedium,
                         color = textSecondary(),
                     )
-                }
-                if (BuildConfig.DEBUG) {
-                    TextButton(onClick = onTestUpdate) {
-                        Text(
-                            text = "测试更新",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = com.android.runbeat.ui.theme.AccentBeat,
-                        )
-                    }
                 }
             }
 
@@ -397,27 +387,6 @@ private fun IntervalModeContent(
         }
 
         Spacer(Modifier.height(8.dp))
-
-        // 语音播报状态
-        Surface(
-            shape = RoundedCornerShape(14.dp),
-            color = cardColor,
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = "语音播报：内置语音（离线，无需系统TTS）",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = RunningGreen,
-                    modifier = Modifier.weight(1f),
-                )
-                TextButton(onClick = viewModel::testTts) {
-                    Text("测试语音", color = AccentBeat)
-                }
-            }
-        }
 
         Spacer(Modifier.height(14.dp))
 

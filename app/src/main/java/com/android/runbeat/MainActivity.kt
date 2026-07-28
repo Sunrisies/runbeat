@@ -87,7 +87,6 @@ private fun UpdateHost() {
             MetronomeScreen(
                 modifier = Modifier.padding(innerPadding),
                 onCheckUpdate = updateViewModel::checkNow,
-                onTestUpdate = updateViewModel::testUpdate,
             )
             UpdateDialog(
                 state = updateState,

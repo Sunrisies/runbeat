@@ -187,9 +187,6 @@ class MetronomeViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun stopInterval() = service?.stopInterval()
 
-    /** 测试语音播报 */
-    fun testTts() = service?.testTts()
-
     fun changeSound(sound: SoundType) {
         val updated = _uiState.value.settings.withSound(sound)
         prefs.saveSettings(updated)

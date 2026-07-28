@@ -4,7 +4,6 @@ import android.content.Context
 import android.os.Build
 import android.util.Log
 import androidx.core.content.ContextCompat
-import com.android.runbeat.BuildConfig
 import com.android.runbeat.R
 import com.android.runbeat.service.DownloadService
 import kotlinx.coroutines.CoroutineScope
@@ -116,25 +115,6 @@ class UpdateManager private constructor(context: Context) {
     /** 「暂不下载」：关闭弹窗，本次会话不再提示（下次启动仍会检测） */
     fun dismiss() {
         _state.value = UpdateUiState.Idle
-    }
-
-    /**
-     * 【仅 Debug】强制弹出测试更新弹窗（读取 assets/update_test.json）。
-     * 用于本地版本总是高于服务器时，随时测试下载/安装流程。
-     */
-    fun debugTestUpdate() {
-        if (!BuildConfig.DEBUG) return
-        if (_state.value !is UpdateUiState.Idle) return
-        scope.launch {
-            val manifest = runCatching {
-                val json = appContext.assets.open("update_test.json")
-                    .bufferedReader(Charsets.UTF_8).use { it.readText() }
-                UpdateManifest.parse(json)
-            }.getOrNull() ?: return@launch
-            Log.d(TAG, "debugTestUpdate: url=${manifest.updateUrl}")
-            lastAvailableManifest = manifest
-            _state.value = UpdateUiState.Available(manifest, forced = false)
-        }
     }
 
     /** 「不再提示」：记录当前远端版本，仅对该版本不再提示 */

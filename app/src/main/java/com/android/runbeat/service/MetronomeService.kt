@@ -18,10 +18,12 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
+import android.util.Log
 import com.android.runbeat.MainActivity
 import com.android.runbeat.R
 import com.android.runbeat.metronome.audio.MetronomeAudioPlayer
 import com.android.runbeat.metronome.audio.SpeechPlayer
+import com.android.runbeat.metronome.audio.SystemTts
 import com.android.runbeat.metronome.core.MetronomeConstants
 import com.android.runbeat.metronome.core.MetronomeEngine
 import com.android.runbeat.metronome.core.MetronomeSettings
@@ -83,10 +85,16 @@ class MetronomeService : Service() {
 
     private val mainHandler = Handler(Looper.getMainLooper())
 
-    // 倒计时语音播报（内置预合成语音，离线可用）
+    // 内置预合成语音（离线兜底）
     private val speechPlayer = SpeechPlayer(this)
 
-    private val _ttsReady = MutableStateFlow(true)
+    // 系统文字转语音（按官方 API 封装）
+    private var systemTts: SystemTts? = null
+
+    @Volatile
+    private var ttsAvailable = false
+
+    private val _ttsReady = MutableStateFlow(false)
     val ttsReady: StateFlow<Boolean> = _ttsReady.asStateFlow()
 
     private var lastCountdownSec = -1
@@ -110,14 +118,24 @@ class MetronomeService : Service() {
         audioPlayer.ensureStarted(_settings.value.soundType, _settings.value.volumePercent)
         audioManager = getSystemService(AUDIO_SERVICE) as AudioManager
         createNotificationChannel()
-        // 内置语音播报（预合成 PCM，离线可用）
+        // 内置语音（离线兜底）
         speechPlayer.ensureStarted()
-        _ttsReady.value = true
+        initTts()
     }
 
-    /** 手动测试语音播报 */
-    fun testTts() {
-        speechPlayer.speakRaw(R.raw.countdown_5)
+    /** 初始化系统文字转语音（中文优先，回退默认语音） */
+    private fun initTts() {
+        systemTts = SystemTts(this) {
+            ttsAvailable = systemTts?.available ?: false
+            _ttsReady.value = ttsAvailable
+        }
+    }
+
+    /** 播报任意文本（走系统 TTS；不可用时返回 false 由调用方兜底） */
+    private fun speakText(text: String): Boolean {
+        val ok = systemTts?.speak(text) ?: false
+        if (!ok) Log.w(SPEECH_TAG, "speakText 未入队（TTS不可用） text=\"$text\"")
+        return ok
     }
 
     override fun onBind(intent: Intent?): IBinder = binder
@@ -332,8 +350,11 @@ class MetronomeService : Service() {
     }
 
     private fun announceCountdown(sec: Int) {
-        // 播报预合成的数字语音（离线，无系统TTS依赖）
-        speechPlayer.speakRaw(countdownRaw(sec))
+        Log.d(SPEECH_TAG, "announceCountdown: sec=$sec")
+        // 优先系统 TTS 播报数字，不可用时回退内置语音
+        if (!speakText(sec.toString())) {
+            speechPlayer.speakRaw(countdownRaw(sec))
+        }
     }
 
     private fun countdownRaw(sec: Int): Int = when (sec) {
@@ -527,6 +548,8 @@ class MetronomeService : Service() {
         abandonAudioFocus()
         audioPlayer.release()
         speechPlayer.release()
+        systemTts?.shutdown()
+        systemTts = null
         super.onDestroy()
     }
 
@@ -537,6 +560,7 @@ class MetronomeService : Service() {
 
     companion object {
         private const val TAG = "MetronomeService"
+        private const val SPEECH_TAG = "RunBeatSpeech"
         const val NOTIFICATION_ID = 1001
         private const val CHANNEL_ID = "metronome_running"
         private const val WAKELOCK_TIMEOUT_MS = 6 * 60 * 60 * 1000L // 6h

@@ -39,9 +39,6 @@ class UpdateViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    /** 【仅 Debug】强制弹出测试更新弹窗 */
-    fun testUpdate() = manager.debugTestUpdate()
-
     fun downloadNow() = manager.downloadNow()
 
     fun cancelDownload() = manager.cancelDownload()
