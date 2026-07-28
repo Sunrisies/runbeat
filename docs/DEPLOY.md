@@ -1,5 +1,7 @@
 # RunBeat 发布部署指南
 
+**项目源码**：https://github.com/Sunrisies/runbeat.git
+
 ## 1. 版本更新系统概述
 
 应用内置完整的自动版本更新流程：

@@ -245,8 +245,6 @@ private fun BasicModeContent(
                 BpmSliderSection(
                     bpm = settings.bpm,
                     onBpmChange = viewModel::setBpm,
-                    onDecrement = { viewModel.setBpm(settings.bpm - MetronomeConstants.BPM_STEP) },
-                    onIncrement = { viewModel.setBpm(settings.bpm + MetronomeConstants.BPM_STEP) },
                 )
             }
 
@@ -443,8 +441,6 @@ private fun IntervalModeContent(
             BpmSliderSection(
                 bpm = settings.bpm,
                 onBpmChange = viewModel::setBpm,
-                onDecrement = { viewModel.setBpm(settings.bpm - MetronomeConstants.BPM_STEP) },
-                onIncrement = { viewModel.setBpm(settings.bpm + MetronomeConstants.BPM_STEP) },
             )
         }
 
@@ -741,8 +737,6 @@ private fun SectionCard(
 private fun BpmSliderSection(
     bpm: Int,
     onBpmChange: (Int) -> Unit,
-    onDecrement: () -> Unit,
-    onIncrement: () -> Unit,
 ) {
     Column(Modifier.fillMaxWidth()) {
         Slider(
@@ -758,50 +752,8 @@ private fun BpmSliderSection(
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Text("${MetronomeConstants.MIN_BPM}", style = MaterialTheme.typography.labelMedium, color = textSecondary())
+            Text("$bpm BPM", style = MaterialTheme.typography.labelMedium, color = AccentBeat, fontWeight = FontWeight.Bold)
             Text("${MetronomeConstants.MAX_BPM}", style = MaterialTheme.typography.labelMedium, color = textSecondary())
-        }
-        Spacer(Modifier.height(14.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            StepButton(symbol = "−", onClick = onDecrement, modifier = Modifier.weight(1f))
-            Column(
-                modifier = Modifier.width(112.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Text(
-                    text = "$bpm",
-                    fontSize = 34.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = AccentBeat,
-                )
-                Text("BPM", style = MaterialTheme.typography.labelMedium, color = textSecondary())
-            }
-            StepButton(symbol = "＋", onClick = onIncrement, modifier = Modifier.weight(1f))
-        }
-    }
-}
-
-@Composable
-private fun StepButton(symbol: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    Surface(
-        modifier = modifier,
-        shape = RoundedCornerShape(16.dp),
-        color = AccentBeat.copy(alpha = 0.10f),
-        border = androidx.compose.foundation.BorderStroke(1.dp, AccentBeat.copy(alpha = 0.35f)),
-    ) {
-        Box(
-            modifier = Modifier.fillMaxWidth().height(58.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                text = symbol,
-                fontSize = 30.sp,
-                fontWeight = FontWeight.Medium,
-                color = AccentBeat,
-            )
         }
     }
 }
