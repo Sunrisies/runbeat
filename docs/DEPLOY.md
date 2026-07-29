@@ -49,9 +49,8 @@ VERSION_NAME=1.1.0
 
 已生成并配置签名 keystore：
 - 文件：`runbeat-release.jks`（项目根目录，已加入 `app/build.gradle.kts` 的 `signingConfigs.release`）
-- alias：`runbeat`，密码：`CHANGE_ME`
-- **生产环境务必更换**：重新生成 keystore 并修改 `build.gradle.kts` 中的密码；
-  或使用 Android Studio `Build > Generate Signed Bundle / APK`。
+- alias：`runbeat`，密码：见本地 `keystore.properties`（**已 gitignore，不提交到 git**）
+- **生产环境务必更换**：重新生成 keystore 并更新 `keystore.properties` 与 CI Secrets；或使用 Android Studio `Build > Generate Signed Bundle / APK`。
 
 > 签名后 `assembleRelease` 直接产出 **已签名** 的 `app-release.apk`（可直接安装），不再是 unsigned 包。
 

@@ -172,7 +172,7 @@ RunBeat 是一款**面向减肥人群的高精度跑步节拍器**：通过听�
 
 | 级别 | 问题 | 说明 |
 | --- | --- | --- |
-| 高 | **签名密钥硬编码** | `runbeat-release.jks`、alias 与密码 `CHANGE_ME` 直接写在 [build.gradle.kts](file:///d:/project/project/app/RunBeat/app/build.gradle.kts) 并提交仓库，密钥文件也在项目内；`DEPLOY.md` 已标注「生产务必更换」但尚未执行 |
+| 高 | **签名密钥硬编码（已修复）** | 签名凭据已改为从本地 `keystore.properties`（gitignore）或 CI Secrets 读取，不再入库；`runbeat-release.jks` 密钥文件仅本地保留 |
 | 中 | **无自有后端，更新依赖单点 CDN** | 版本检测/下载全部依赖 `cdn.sunrise1024.top`，CDN 故障即无法更新；且无渠道/灰度能力 |
 | 中 | **Release 关闭了代码优化** | `optimization { enable = false }`，APK 体积与运行效率未优化 |
 | 中 | **UI 文案硬编码中文** | 音色名（咔嗒/哔声/木鱼）、预设名等在 `MetronomeScreen`/`ViewModel` 中写死，`strings.xml` 已定义但未引用，无法本地化 |

@@ -1,0 +1,85 @@
+name: 发布 Release
+
+# 手动触发：仓库 Actions 页面 → 「发布 Release」 → Run workflow
+on:
+  workflow_dispatch:
+    inputs:
+      release_notes:
+        description: '本次发布说明（用于 GitHub Release 描述，可留空）'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 设置 JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: 设置 Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: 还原签名 keystore（来自 Secrets）
+        run: |
+          if [ -z "${{ secrets.RELEASE_KEYSTORE }}" ]; then
+            echo "::error::未配置 Secret RELEASE_KEYSTORE，请先将 runbeat-release.jks 转 base64 后添加（见 docs/CI_RELEASE.md）"
+            exit 1
+          fi
+          echo "${{ secrets.RELEASE_KEYSTORE }}" | base64 -d > runbeat-release.jks
+          chmod 600 runbeat-release.jks
+
+      - name: 递增版本号 + 生成 deploy/manifest.json
+        run: ./gradlew :app:bumpVersion --no-daemon
+
+      - name: 解析新版本号
+        run: |
+          VERSION=$(grep '^VERSION_NAME' version.properties | cut -d= -f2 | tr -d '[:space:]')
+          echo "APP_VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "本次发布版本: v$VERSION"
+
+      - name: manifest.update_url 指向 GitHub Release 资产
+        run: |
+          URL="https://github.com/Sunrisies/runbeat/releases/download/v${APP_VERSION}/runbeat-${APP_VERSION}.apk"
+          python3 - "$URL" <<'EOF'
+          import json, sys
+          p = "deploy/manifest.json"
+          d = json.load(open(p, encoding="utf-8"))
+          d["update_url"] = sys.argv[1]
+          json.dump(d, open(p, "w", encoding="utf-8"), ensure_ascii=False, indent=2)
+          print("update_url ->", d["update_url"])
+          EOF
+
+      - name: 构建已签名 Release APK
+        run: |
+          ./gradlew :app:assembleRelease --no-daemon
+          cp app/build/outputs/apk/release/app-release.apk "runbeat-${APP_VERSION}.apk"
+
+      - name: 提交版本递增回仓库
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add version.properties deploy/manifest.json app/src/main/assets/update_mock.json
+          git commit -m "chore: 版本递增至 v${APP_VERSION}" || echo "无可提交变更"
+          git push origin HEAD:"${GITHUB_REF_NAME}" || echo "::warning::推送失败（不影响本次发布，下次发版前请手动同步仓库）"
+
+      - name: 创建 GitHub Release 并上传 APK 与 manifest
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.APP_VERSION }}
+          name: RunBeat v${{ env.APP_VERSION }}
+          body: ${{ inputs.release_notes || '自动发布' }}
+          files: |
+            runbeat-${{ env.APP_VERSION }}.apk
+            deploy/manifest.json
+          fail_on_unmatched_files: true

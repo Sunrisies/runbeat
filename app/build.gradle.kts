@@ -14,6 +14,15 @@ if (versionFile.exists()) {
 val appVersionCode: Int = versionProps.getProperty("VERSION_CODE", "1").toInt()
 val appVersionName: String = versionProps.getProperty("VERSION_NAME", "1.0.0")
 
+// ---- 签名凭据：本地 keystore.properties（已 gitignore）优先，其次 CI 环境变量 ----
+val keystorePropsFile = rootProject.file("keystore.properties")
+val keystoreProps = Properties()
+if (keystorePropsFile.exists()) {
+    keystorePropsFile.inputStream().use { keystoreProps.load(it) }
+}
+fun ksProp(key: String, envName: String): String =
+    keystoreProps.getProperty(key) ?: System.getenv(envName) ?: ""
+
 android {
     namespace = "com.android.runbeat"
     compileSdk {
@@ -25,9 +34,10 @@ android {
     signingConfigs {
         create("release") {
             storeFile = rootProject.file("runbeat-release.jks")
-            storePassword = "CHANGE_ME"
-            keyAlias = "runbeat"
-            keyPassword = "CHANGE_ME"
+            // 凭据从本地 keystore.properties（已 gitignore）或 CI 环境变量读取，绝不硬编码入库
+            storePassword = ksProp("storePassword", "RELEASE_STORE_PASSWORD")
+            keyAlias = ksProp("keyAlias", "RELEASE_KEY_ALIAS")
+            keyPassword = ksProp("keyPassword", "RELEASE_KEY_PASSWORD")
         }
     }
 
