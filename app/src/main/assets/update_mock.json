@@ -1,7 +1,7 @@
 {
-  "version_code": 11,
-  "version_name": "1.1.9",
-  "update_url": "https://cdn.sunrise1024.top/runbeat/runbeat-1.1.9.apk",
+  "version_code": 12,
+  "version_name": "1.1.10",
+  "update_url": "https://cdn.sunrise1024.top/runbeat/runbeat-1.1.10.apk",
   "release_notes": "Mock 演示版本（Debug 构建自动启用）。
 · 优化节拍器调度精度
 · 修复若干稳定性问题
