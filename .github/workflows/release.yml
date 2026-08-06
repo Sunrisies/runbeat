@@ -111,9 +111,9 @@ jobs:
           fi
           curl -sL -o qshell.tar.gz "https://github.com/qiniu/qshell/releases/download/v2.19.11/qshell-v2.19.11-linux-amd64.tar.gz"
           tar -xzf qshell.tar.gz
-          ./qshell account "$QINIU_AK" "$QINIU_SK"
-          ./qshell fput "$QINIU_BUCKET" "runbeat/runbeat-${APP_VERSION}.apk" "runbeat-${APP_VERSION}.apk" true
-          ./qshell fput "$QINIU_BUCKET" "runbeat/manifest.json" "deploy/manifest.json" true
+          ./qshell account "$QINIU_AK" "$QINIU_SK" "runbeat"
+          ./qshell fput "$QINIU_BUCKET" "runbeat/runbeat-${APP_VERSION}.apk" "runbeat-${APP_VERSION}.apk" --overwrite
+          ./qshell fput "$QINIU_BUCKET" "runbeat/manifest.json" "deploy/manifest.json" --overwrite
           echo "已上传七牛云："
           echo "  https://cdn.sunrise1024.top/runbeat/manifest.json"
           echo "  https://cdn.sunrise1024.top/runbeat/runbeat-${APP_VERSION}.apk"
