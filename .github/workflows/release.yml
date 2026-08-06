@@ -99,11 +99,21 @@ jobs:
             deploy/manifest.json
           fail_on_unmatched_files: true
 
-      - name: 提示上传到自有 CDN
+      - name: 上传到七牛云 CDN（配置了 Secrets 才执行）
+        env:
+          QINIU_AK: ${{ secrets.QINIU_AK }}
+          QINIU_SK: ${{ secrets.QINIU_SK }}
+          QINIU_BUCKET: ${{ secrets.QINIU_BUCKET }}
         run: |
-          echo "======================================================"
-          echo "请把以下两个文件上传到 cdn.sunrise1024.top/runbeat/ ："
-          echo "  1) runbeat-${APP_VERSION}.apk"
-          echo "  2) deploy/manifest.json"
-          echo "用户端将通过 https://cdn.sunrise1024.top/runbeat/manifest.json 检测并下载更新"
-          echo "======================================================"
+          if [ -z "$QINIU_AK" ] || [ -z "$QINIU_SK" ] || [ -z "$QINIU_BUCKET" ]; then
+            echo "::warning::未配置七牛云 Secrets（QINIU_AK / QINIU_SK / QINIU_BUCKET），跳过 CDN 上传，请手动上传 APK 与 manifest.json"
+            exit 0
+          fi
+          curl -sL -o qshell.tar.gz "https://github.com/qiniu/qshell/releases/download/v2.19.11/qshell-v2.19.11-linux-amd64.tar.gz"
+          tar -xzf qshell.tar.gz
+          ./qshell account "$QINIU_AK" "$QINIU_SK"
+          ./qshell fput "$QINIU_BUCKET" "runbeat/runbeat-${APP_VERSION}.apk" "runbeat-${APP_VERSION}.apk" true
+          ./qshell fput "$QINIU_BUCKET" "runbeat/manifest.json" "deploy/manifest.json" true
+          echo "已上传七牛云："
+          echo "  https://cdn.sunrise1024.top/runbeat/manifest.json"
+          echo "  https://cdn.sunrise1024.top/runbeat/runbeat-${APP_VERSION}.apk"
