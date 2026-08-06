@@ -42,6 +42,11 @@ jobs:
           echo "${{ secrets.RELEASE_KEYSTORE }}" | base64 -d > runbeat-release.jks
           chmod 600 runbeat-release.jks
 
+      - name: CI 使用官方 Gradle 发行版（本地为阿里云镜像，CI 环境下载会卡死）
+        run: |
+          sed -i 's|distributionUrl=.*gradle-|distributionUrl=https://services.gradle.org/distributions/gradle-|' gradle/wrapper/gradle-wrapper.properties
+          grep -o 'distributionUrl=.*' gradle/wrapper/gradle-wrapper.properties
+
       - name: 递增版本号 + 生成 deploy/manifest.json
         run: ./gradlew :app:bumpVersion --no-daemon
 
@@ -51,16 +56,19 @@ jobs:
           echo "APP_VERSION=$VERSION" >> "$GITHUB_ENV"
           echo "本次发布版本: v$VERSION"
 
-      - name: manifest.update_url 指向 GitHub Release 资产
+      - name: 写入 release_notes 到 manifest（update_url 保持为自有 CDN）
+        env:
+          REL_NOTES: ${{ inputs.release_notes }}
         run: |
-          URL="https://github.com/Sunrisies/runbeat/releases/download/v${APP_VERSION}/runbeat-${APP_VERSION}.apk"
-          python3 - "$URL" <<'EOF'
+          python3 - "$REL_NOTES" <<'EOF'
           import json, sys
           p = "deploy/manifest.json"
           d = json.load(open(p, encoding="utf-8"))
-          d["update_url"] = sys.argv[1]
+          if sys.argv[1]:
+              d["release_notes"] = sys.argv[1].replace("\\n", "\n")
           json.dump(d, open(p, "w", encoding="utf-8"), ensure_ascii=False, indent=2)
           print("update_url ->", d["update_url"])
+          print("release_notes ->", d["release_notes"])
           EOF
 
       - name: 构建已签名 Release APK
@@ -80,7 +88,7 @@ jobs:
           git commit -m "chore: 版本递增至 v${APP_VERSION}" || echo "无可提交变更"
           git push origin HEAD:"${GITHUB_REF_NAME}" || echo "::warning::推送失败（不影响本次发布，下次发版前请手动同步仓库）"
 
-      - name: 创建 GitHub Release 并上传 APK 与 manifest
+      - name: 创建 GitHub Release 并上传 APK 与 manifest（备份）
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ env.APP_VERSION }}
@@ -90,3 +98,12 @@ jobs:
             runbeat-${{ env.APP_VERSION }}.apk
             deploy/manifest.json
           fail_on_unmatched_files: true
+
+      - name: 提示上传到自有 CDN
+        run: |
+          echo "======================================================"
+          echo "请把以下两个文件上传到 cdn.sunrise1024.top/runbeat/ ："
+          echo "  1) runbeat-${APP_VERSION}.apk"
+          echo "  2) deploy/manifest.json"
+          echo "用户端将通过 https://cdn.sunrise1024.top/runbeat/manifest.json 检测并下载更新"
+          echo "======================================================"
