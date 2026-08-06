@@ -1,7 +1,7 @@
 {
-  "version_code": 10,
-  "version_name": "1.1.8",
-  "update_url": "https://cdn.sunrise1024.top/runbeat/runbeat-1.1.8.apk",
-  "release_notes": "更新内容: 1.声音启动优化",
+  "version_code": 11,
+  "version_name": "1.1.9",
+  "update_url": "https://github.com/Sunrisies/runbeat/releases/download/v1.1.9/runbeat-1.1.9.apk",
+  "release_notes": "请填写本次更新说明",
   "force_update": false
 }
